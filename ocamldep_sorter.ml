@@ -69,14 +69,25 @@ let sort_deps rules targets_to_sort =
   let l = ExtLib.List.unique l in
   let coolsort a =
     let cmp x y =
-      let depended target _of =
-        let all_deps = List.assoc target rules in
-        if List.mem _of all_deps
-        then true
-        else false in
+      let rec depended target _of =
+        try
+          let all_deps = List.assoc target rules in
+          if List.mem _of all_deps
+          then true
+          else begin
+            (* is it a dependency of a dependency? *)
+            let rec loop = function
+              | [] -> false
+              | subdep::t ->
+                  if depended subdep _of
+                  then true
+                  else loop t in
+            loop all_deps
+          end
+        with Not_found -> false in
       match depended x y, depended y x with
-      | true, false -> 1
-      | false, true -> -1
+      | true, false -> 1 (* move x right *)
+      | false, true -> -1 (* everything is ok *)
       | false, false -> 0
       | true, true -> Printf.printf "%S %S\n%!" x y; assert false in
     let swap a x y =
@@ -97,6 +108,16 @@ let sort_deps rules targets_to_sort =
 let () =
   let depend = Std.input_all stdin in
   let rules = parse_depend depend in
+  (* .cmi hack *)
+  let rules =
+    List.map
+      (fun (target, deps) ->
+        (target
+        , List.map
+            (fun x ->
+              if String.ends_with x ".cmi"
+              then String.slice x ~last:(-3) ^ ".cmo"
+              else x) deps)) rules in
   let targets_to_sort =
     let rec loop n acc =
       try
