@@ -96,9 +96,9 @@ let sort_deps rules targets_to_sort =
       a.(y) <- tmp in
     let i = ref 0 in
     let j = ref 0 in
-    while !i < Array.length a - 2 do
-      j := !i;
-      while !j < Array.length a - 1 do
+    while !i < Array.length a - 1 do
+      j := !i + 1;
+      while !j < Array.length a do
         if cmp a.(!i) a.(!j) = 1
         then begin
           swap a !i !j;
