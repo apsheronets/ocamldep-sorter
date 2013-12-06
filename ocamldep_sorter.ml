@@ -74,7 +74,7 @@ let sort_deps rules targets_to_sort =
           let all_deps = List.assoc target rules in
           if List.mem _of all_deps
           then true
-          else begin
+          else false (*begin
             (* is it a dependency of a dependency? *)
             let rec loop = function
               | [] -> false
@@ -83,7 +83,7 @@ let sort_deps rules targets_to_sort =
                   then true
                   else loop t in
             loop all_deps
-          end
+          end*)
         with Not_found -> false in
       match depended x y, depended y x with
       | true, false -> 1 (* move x right *)
@@ -94,11 +94,19 @@ let sort_deps rules targets_to_sort =
       let tmp = a.(x) in
       a.(x) <- a.(y);
       a.(y) <- tmp in
-    for i = 0 to Array.length a - 1 do
-      for j = i to Array.length a - 1 do
-        if cmp a.(i) a.(j) = 1
-        then swap a i j;
+    let i = ref 0 in
+    let j = ref 0 in
+    while !i < Array.length a - 2 do
+      j := !i;
+      while !j < Array.length a - 1 do
+        if cmp a.(!i) a.(!j) = 1
+        then begin
+          swap a !i !j;
+          i := -1;
+          j := Array.length a;
+        end else incr j
       done;
+      incr i;
     done in
   let a = Array.of_list l in
   coolsort a;
@@ -116,8 +124,12 @@ let () =
         , List.map
             (fun x ->
               if String.ends_with x ".cmi"
-              then String.slice x ~last:(-3) ^ ".cmo"
-              else x) deps)) rules in
+              then begin
+                let new_name = String.slice x ~last:(-4) ^ ".cmo" in
+                if new_name = target (* do not make circular dependencies *)
+                then x
+                else new_name
+              end else x) deps)) rules in
   let targets_to_sort =
     let rec loop n acc =
       try
