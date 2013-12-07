@@ -46,6 +46,8 @@ let replace ?beg ~str ~sub ~by =
       loop beg;
       Buffer.contents buf
 
+type rule = (string * string list)
+
 let print_rules =
   List.iter (fun (target, files) ->
     Printf.printf "%s:" target;
@@ -64,54 +66,32 @@ let parse_depend s =
         (target, List.filter (function "" -> false | _ -> true) (String.nsplit depends " "))) rules in
   rules
 
-let sort_deps rules targets_to_sort =
-  let l = targets_to_sort in
-  let l = ExtLib.List.unique l in
-  let coolsort a =
-    let cmp x y =
-      let rec depended target _of =
-        try
-          let all_deps = List.assoc target rules in
-          if List.mem _of all_deps
-          then true
-          else false (*begin
-            (* is it a dependency of a dependency? *)
-            let rec loop = function
-              | [] -> false
-              | subdep::t ->
-                  if depended subdep _of
-                  then true
-                  else loop t in
-            loop all_deps
-          end*)
-        with Not_found -> false in
-      match depended x y, depended y x with
-      | true, false -> 1 (* move x right *)
-      | false, true -> -1 (* everything is ok *)
-      | false, false -> 0
-      | true, true -> Printf.printf "%S %S\n%!" x y; assert false in
-    let swap a x y =
-      let tmp = a.(x) in
-      a.(x) <- a.(y);
-      a.(y) <- tmp in
-    let i = ref 0 in
-    let j = ref 0 in
-    while !i < Array.length a - 1 do
-      j := !i + 1;
-      while !j < Array.length a do
-        if cmp a.(!i) a.(!j) = 1
-        then begin
-          swap a !i !j;
-          i := -1;
-          j := Array.length a;
-        end else incr j
-      done;
-      incr i;
-    done in
-  let a = Array.of_list l in
-  coolsort a;
-  let l = Array.to_list a in
-  l
+let sort_deps (rules:rule list) targets_to_sort =
+  let rec iteration n (rest_rules:rule list) left_side =
+    match rest_rules with
+    | [] -> left_side
+    | _ ->
+        let has_no_deps =
+          List.filter (fun (target, deps) ->
+            match deps with
+            | [] -> true
+            | _ -> false) rest_rules in
+        let has_no_deps =
+          List.map (fun (target, _) -> target) has_no_deps in
+        (* remove targets without deps *)
+        let rest_rules =
+          List.filter (fun (target, deps) ->
+            match deps with
+            | [] -> false
+            | _ -> true) rest_rules in
+        (* remove targets without deps from another deps *)
+        let rest_rules =
+          List.map (fun (target, deps) ->
+            target, List.filter (fun dep ->
+              not (List.mem dep has_no_deps)) deps) rest_rules in
+        let left_side = left_side @ has_no_deps in
+        iteration (succ n) rest_rules left_side in
+  iteration 1 rules []
 
 let () =
   let depend = Std.input_all stdin in
@@ -121,27 +101,25 @@ let () =
     List.map
       (fun (target, deps) ->
         (target
-        , List.map
-            (fun x ->
+        , List.fold_left
+            (fun acc x ->
               if String.ends_with x ".cmi"
               then begin
                 let new_name = String.slice x ~last:(-4) ^ ".cmo" in
                 if new_name = target (* do not make circular dependencies *)
-                then x
-                else new_name
-              end else x) deps)) rules in
+                then acc
+                else new_name::acc
+              end else x::acc) [] deps)) rules in
   let targets_to_sort =
     let rec loop n acc =
       try
         loop (succ n) (Sys.argv.(n) :: acc)
       with _ -> acc in
-    match loop 1 [] with
-    | [] ->
-        List.fold_left (fun acc (target, deps) ->
-          target::(List.rev_append deps acc)
-        ) [] rules
-    | l -> l in
-  let line = sort_deps rules targets_to_sort in
+    loop 1 [] in
+  let sorted_all_targets = sort_deps rules targets_to_sort in
+  (* remove unnecessary *)
+  let line =
+    List.filter (fun dep -> List.mem dep targets_to_sort) sorted_all_targets in
   let line = String.concat " " line in
   print_endline line
 
