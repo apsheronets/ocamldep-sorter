@@ -1,6 +1,8 @@
 
 open ExtLib
 
+(* I miss these functions *)
+
 let find_from str pos sub =
   let sublen = String.length sub in
   if sublen = 0 then
@@ -46,25 +48,30 @@ let replace ?beg ~str ~sub ~by =
       loop beg;
       Buffer.contents buf
 
+let ( & ) f x = f x
+let (>>) f g = g f
+
+
 type rule = (string * string list)
 
-let print_rules =
+let print_rules : rule list -> unit =
   List.iter (fun (target, files) ->
     Printf.printf "%s:" target;
     List.iter (fun file ->
       Printf.printf " %s" file) files;
     print_char '\n')
 
-let parse_depend s =
-  let s = replace s "\\\n" " " in
-  let rules = String.nsplit s "\n" in
-  let rules = List.filter (function "" -> false | _ -> true) rules in
-  let rules = List.map (fun s -> String.split s ":") rules in
-  let rules =
-    List.map
-      (function (target, depends) ->
-        (target, List.filter (function "" -> false | _ -> true) (String.nsplit depends " "))) rules in
-  rules
+let parse_depend s : rule list =
+  let s = replace s "\\\n" " " in (* remove \\n for one rule per line *)
+  String.nsplit s "\n" >>         (* split rules *)
+  List.filter (function "" -> false | _ -> true) >> (* remove blank trash *)
+  List.map (fun s -> String.split s ":") >> (* split rule into target and deps *)
+  List.map
+    (function (target, depends) ->
+      (target,
+        List.filter
+          (function "" -> false | _ -> true) (* also remove blank trash *)
+          (String.nsplit depends " ")))      (* from splited dependencies *)
 
 let sort_deps (rules:rule list) targets_to_sort =
   let rec iteration n (rest_rules:rule list) left_side =
@@ -78,14 +85,12 @@ let sort_deps (rules:rule list) targets_to_sort =
             | _ -> false) rest_rules in
         let has_no_deps =
           List.map (fun (target, _) -> target) has_no_deps in
-        (* remove targets without deps *)
-        let rest_rules =
+        let rest_rules = (* remove targets without deps *)
           List.filter (fun (target, deps) ->
             match deps with
             | [] -> false
             | _ -> true) rest_rules in
-        (* remove targets without deps from another deps *)
-        let rest_rules =
+        let rest_rules = (* also remove them from deps *)
           List.map (fun (target, deps) ->
             target, List.filter (fun dep ->
               not (List.mem dep has_no_deps)) deps) rest_rules in
@@ -96,8 +101,7 @@ let sort_deps (rules:rule list) targets_to_sort =
 let () =
   let depend = Std.input_all stdin in
   let rules = parse_depend depend in
-  (* .cmi hack *)
-  let rules =
+  let rules = (* .cmi hack *)
     List.map
       (fun (target, deps) ->
         (target
@@ -117,9 +121,13 @@ let () =
       with _ -> acc in
     loop 1 [] in
   let sorted_all_targets = sort_deps rules targets_to_sort in
-  (* remove unnecessary *)
-  let line =
-    List.filter (fun dep -> List.mem dep targets_to_sort) sorted_all_targets in
-  let line = String.concat " " line in
-  print_endline line
+  let needed_targets = (* remove unnecessary targets if needed *)
+    match targets_to_sort with
+    | [] -> sorted_all_targets (* do nothing *)
+    | targets_to_sort ->
+        List.filter
+          (fun dep -> List.mem dep targets_to_sort)
+          sorted_all_targets in
+  let output = String.concat " " needed_targets in
+  print_endline output
 
