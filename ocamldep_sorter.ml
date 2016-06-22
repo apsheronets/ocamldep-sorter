@@ -68,7 +68,7 @@ let parse_depend s : rule list =
   List.map (fun s -> String.split s ":") >> (* split rule into target and deps *)
   List.map
     (function (target, depends) ->
-      (target,
+      (String.strip target,
         List.filter
           (function "" -> false | _ -> true) (* also remove blank trash *)
           (String.nsplit depends " ")))      (* from splited dependencies *)
